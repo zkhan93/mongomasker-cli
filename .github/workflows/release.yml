@@ -1,0 +1,145 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.0.0)'
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+          poetry install
+          
+      - name: Run tests
+        run: |
+          poetry run python -m unittest discover tests
+          
+      - name: Build package
+        run: |
+          poetry build
+          
+      - name: Get version from tag
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          fi
+          
+          # Extract version number without 'v' prefix for PyPI check
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION_NO_V="${{ github.event.inputs.version }}"
+            # Remove 'v' prefix if present
+            VERSION_NO_V="${VERSION_NO_V#v}"
+          else
+            VERSION_NO_V="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "VERSION_NO_V=$VERSION_NO_V" >> $GITHUB_ENV
+          
+      - name: Check if version exists on PyPI
+        id: check_version
+        run: |
+          pip install requests
+          PACKAGE_NAME=$(grep "name =" pyproject.toml | head -n1 | cut -d '"' -f2 | cut -d '"' -f1)
+          echo "Package name: $PACKAGE_NAME"
+          echo "Version to check: ${{ env.VERSION_NO_V }}"
+          
+          # Check if package version exists on PyPI
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://pypi.org/pypi/$PACKAGE_NAME/${{ env.VERSION_NO_V }}/json)
+          
+          if [ "$HTTP_STATUS" == "200" ]; then
+            echo "::error::Version ${{ env.VERSION_NO_V }} already exists on PyPI. Please use a different version."
+            echo "EXISTS=true" >> $GITHUB_ENV
+            exit 1
+          else
+            echo "Version ${{ env.VERSION_NO_V }} does not exist on PyPI. Proceeding with deployment."
+            echo "EXISTS=false" >> $GITHUB_ENV
+          fi
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ env.VERSION }}
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          
+  # Add a job to automatically update version in pyproject.toml for the next development cycle
+  update-version:
+    needs: release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.WORKFLOW_TOKEN }}
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+      
+      - name: Get current version and calculate next version
+        id: version
+        run: |
+          # Extract version from tag (remove 'v' prefix)
+          CURRENT_VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Current version: $CURRENT_VERSION"
+          
+          # Parse the version components
+          MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
+          MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
+          PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
+          
+          # Increment patch version for next development cycle
+          NEXT_PATCH=$((PATCH + 1))
+          NEXT_VERSION="$MAJOR.$MINOR.$NEXT_PATCH"
+          echo "Next version: $NEXT_VERSION"
+          echo "NEXT_VERSION=$NEXT_VERSION" >> $GITHUB_ENV
+      
+      - name: Update version in pyproject.toml
+        run: |
+          poetry version ${{ env.NEXT_VERSION }}
+      
+      - name: Commit and push version change
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add pyproject.toml
+          git commit -m "Bump version to ${{ env.NEXT_VERSION }} [skip ci]"
+          git push
