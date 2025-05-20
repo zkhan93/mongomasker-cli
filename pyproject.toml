@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mongomasker_cli"
-version = "0.5.1"
+version = "0.5.2"
 description = "MongoMasker is a tool designed to anonymize specified fields in a MongoDB collection. It uses the `faker` library to generate realistic fake data, processes documents in batches for improved performance, and leverages asynchronous processing with `motor` for efficiency."
 authors = ["Zeeshan Khan <zkhan1093@gmail.com>"]
 readme = "README.md"

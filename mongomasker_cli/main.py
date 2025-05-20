@@ -137,6 +137,7 @@ def main(
     ),
     batch_size: int = typer.Option(100, help="Batch size for processing"),
     show_warnings: bool = typer.Option(False, help="Show warnings"),
+    mongo_filter: str = typer.Option("{}", help="MongoDB filter as JSON string"),
 ):
     async def run():
         client = AsyncIOMotorClient(mongo_uri)
@@ -147,9 +148,12 @@ def main(
         target_collection_handle = target_db_handle[target_collection]
 
         fields_to_anonymize = json.load(fields_to_anonymize_file)
-
-        cursor = source_collection_handle.find()
-        total_documents = await source_collection_handle.count_documents({})
+        
+        # Parse the mongo_filter string to a Python dictionary
+        filter_dict = json.loads(mongo_filter)
+        
+        cursor = source_collection_handle.find(filter_dict)
+        total_documents = await source_collection_handle.count_documents(filter_dict)
         info(f"Total documents to process: {total_documents}")
         processed_documents = 0
 

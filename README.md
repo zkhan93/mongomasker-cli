@@ -39,7 +39,8 @@ mongomasker \
     target_collection \
     fields_to_anonymize.json \
     --batch-size 100 \
-    --show-warnings
+    --show-warnings \
+    --mongo-filter '{"status": "active", "createdAt": {"$gt": "2023-01-01"}}'
 ```
 
 Arguments
@@ -51,6 +52,7 @@ Arguments
  - `fields_to_anonymize_file`: Path to the JSON file specifying the fields to anonymize
  - `--batch-size`: (Optional) Number of documents to process in each batch (default: 100)
  - `--show-warnings`: (Optional) Show warnings for missing fields or unsupported structures
+ - `--mongo-filter`: (Optional) MongoDB filter as JSON string to filter source documents (default: "{}")
 Example `fields_to_anonymize.json`
 Create a JSON file specifying the fields to anonymize and their corresponding data types. For example:
 
