@@ -75,6 +75,11 @@ jobs:
             echo "EXISTS=false" >> $GITHUB_ENV
           fi
       
+      - name: Create a Tag
+        run: |
+          git tag ${{ env.VERSION }}
+          git push origin ${{ env.VERSION }}
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -83,7 +88,7 @@ jobs:
             dist/*.whl
             dist/*.tar.gz
           draft: false
-          tag: ${{ env.VERSION }}
+          tag_name: ${{ env.VERSION }}
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
