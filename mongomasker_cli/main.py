@@ -1,6 +1,9 @@
 import asyncio
 import json
 from motor.motor_asyncio import AsyncIOMotorClient
+from bson.codec_options import CodecOptions, DatetimeConversion
+from bson.binary import UuidRepresentation
+
 from faker import Faker
 import typer
 from typing import List
@@ -8,6 +11,7 @@ from datetime import datetime
 
 app = typer.Typer()
 fake = Faker()
+
 
 def warning(msg):
     typer.secho(f"warning: {msg}", fg=typer.colors.YELLOW, bold=True)
@@ -118,8 +122,12 @@ def anonymize_data(document, fields, show_warnings=False):
     return document
 
 
-async def process_batch(batch, target_collection, fields_to_anonymize, show_warnings=False):
-    anonymized_batch = [anonymize_data(doc, fields_to_anonymize, show_warnings) for doc in batch]
+async def process_batch(
+    batch, target_collection, fields_to_anonymize, show_warnings=False
+):
+    anonymized_batch = [
+        anonymize_data(doc, fields_to_anonymize, show_warnings) for doc in batch
+    ]
     # info(f"Anonymized batch of {len(anonymized_batch)} documents")
     await target_collection.insert_many(anonymized_batch)
     # info(f"Inserted batch of {len(anonymized_batch)} documents")
@@ -141,17 +149,28 @@ def main(
 ):
     async def run():
         client = AsyncIOMotorClient(mongo_uri)
-        source_db_handle = client[source_db]
-        target_db_handle = client[target_db]
+        codec_options = CodecOptions(
+            tz_aware=True,
+            uuid_representation=UuidRepresentation.STANDARD,
+            datetime_conversion=DatetimeConversion.DATETIME_CLAMP,
+        )
+        source_db_handle = client.get_database(
+            source_db,
+            codec_options=codec_options,
+        )
+        target_db_handle = client.get_database(
+            target_db,
+            codec_options=codec_options,
+        )
 
         source_collection_handle = source_db_handle[source_collection]
         target_collection_handle = target_db_handle[target_collection]
 
         fields_to_anonymize = json.load(fields_to_anonymize_file)
-        
+
         # Parse the mongo_filter string to a Python dictionary
         filter_dict = json.loads(mongo_filter)
-        
+
         cursor = source_collection_handle.find(filter_dict)
         total_documents = await source_collection_handle.count_documents(filter_dict)
         info(f"Total documents to process: {total_documents}")
@@ -166,7 +185,10 @@ def main(
                 if len(batch) >= batch_size:
                     # info(f"Processing batch of {len(batch)} documents")
                     await process_batch(
-                        batch, target_collection_handle, fields_to_anonymize, show_warnings
+                        batch,
+                        target_collection_handle,
+                        fields_to_anonymize,
+                        show_warnings,
                     )
                     # info(f"Processed {len(batch)} documents")
                     processed_documents += len(batch)
