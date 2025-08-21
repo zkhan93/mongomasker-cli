@@ -83,6 +83,7 @@ jobs:
             dist/*.whl
             dist/*.tar.gz
           draft: false
+          tag: ${{ env.VERSION }}
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
